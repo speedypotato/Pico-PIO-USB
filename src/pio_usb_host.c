@@ -23,6 +23,9 @@ enum {
   TRANSACTION_MAX_RETRY = 3, // Number of times to retry a failed transaction
 };
 
+// Interrupt-endpoint poll interval override (frames). 0 = use bInterval.
+static volatile uint8_t interval_override = 0;
+
 static alarm_pool_t *_alarm_pool = NULL;
 static repeating_timer_t sof_rt;
 // The sof_count may be incremented and then read on different cores.
@@ -314,7 +317,8 @@ void __not_in_flash_func(pio_usb_host_frame)(void) {
             }
 
             if (is_periodic) {
-              ep->interval_counter = ep->interval - 1;
+              uint8_t interval_override_local = interval_override;
+              ep->interval_counter = (interval_override_local ? interval_override_local : ep->interval) - 1;
             }
           }
 
@@ -779,5 +783,16 @@ static void __no_inline_not_in_flash_func(__pio_usb_host_irq_handler)(uint8_t ro
 
 // weak alias to __pio_usb_host_irq_handler
 void pio_usb_host_irq_handler(uint8_t root_id) __attribute__ ((weak, alias("__pio_usb_host_irq_handler")));
+
+void set_interval_override(uint8_t interval)
+{
+  // we don't enforce powers of two
+  interval_override = interval;
+}
+
+uint8_t get_interval_override()
+{
+  return interval_override;
+}
 
 #pragma GCC pop_options
