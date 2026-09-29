@@ -163,6 +163,25 @@ static inline __force_inline bool pio_usb_bus_wait_for_rx_start(const pio_port_t
   return false;
 };
 
+// Deliberately NOT inline. This was an out-of-line RAM function until 9be1f3e
+// made it a header inline; that alone (with every other change of that commit
+// reverted) makes devices behind a hub lose the hub's port-change reports
+// after a hot unplug (sekigon-gonnoc/Pico-PIO-USB#149). Bisected on hardware:
+// inline = fails 10/10, out-of-line = passes 10/10. The few cycles of call
+// overhead between the end of our TX and clearing the RX flags are
+// load-bearing; keep the call boundary until the underlying timing dependency
+// is understood and made explicit.
+void __no_inline_not_in_flash_func(pio_usb_bus_start_receive)(const pio_port_t *pp) {
+  // Enable the (already reset) RX decoder now that our packet has left the
+  // bus. Direct CTRL write to keep the turnaround short; idempotent when the
+  // SM is already running (device mode).
+  pp->pio_usb_rx->ctrl |= (1u << pp->sm_rx);
+  pp->pio_usb_rx->irq = IRQ_RX_ALL_MASK;
+  // No read-back spin here. 9be1f3e added one; on hardware it alone makes a
+  // device behind a hub fail to re-enumerate after hot-replug (see commit
+  // message). A single write is what the pre-9be1f3e code did.
+}
+
 uint8_t __no_inline_not_in_flash_func(pio_usb_bus_wait_handshake)(pio_port_t* pp) {
   if (!pio_usb_bus_wait_for_rx_start(pp)) {
     return 0;
