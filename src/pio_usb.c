@@ -129,13 +129,20 @@ void __no_inline_not_in_flash_func(pio_usb_bus_send_token)(pio_port_t *pp,
   pio_usb_bus_usb_transfer(pp, packet_encoded, encoded_len);
 }
 
+// Reset the RX decoder state machine but leave it DISABLED. The host enables
+// it in pio_usb_bus_start_receive() only after its own token/data packet has
+// been sent. Enabling it here (30283a9) let the decoder run while the host was
+// still driving the bus; that was harmless for a device on the root port but
+// broke hot-replug of devices behind a hub (the first transactions after the
+// hub-port reset never get a usable response). Verified on hardware with
+// GP2040-CE + PS4 auth dongle behind a hub: re-plug fails 100% with the early
+// enable and passes with the enable moved back after TX.
 void __no_inline_not_in_flash_func(pio_usb_bus_prepare_receive)(const pio_port_t *pp) {
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
   pio_sm_clear_fifos(pp->pio_usb_rx, pp->sm_rx);
   pio_sm_restart(pp->pio_usb_rx, pp->sm_rx);
   pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr);
   pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr2);
-  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, true);
 }
 
 static inline __force_inline bool pio_usb_bus_wait_for_rx_start(const pio_port_t* pp) {
